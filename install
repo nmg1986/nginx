@@ -1,0 +1,103 @@
+#!/bin/bash
+##
+##
+#########################################################################################
+OPENSSL=openssl-1.0.0c.tar.gz
+ZLIB=zlib-1.2.3.tar.tar
+PCRE=pcre-8.10.tar.gz
+NGINX=nginx-0.8.54.tar.gz
+NGINX_JVM_ROUTE=nginx-upstream-jvm-route-0.1.tar.gz
+NGINX_UPSTREAM_CHECK=nginx-upstream-check-0.1.4.tar.gz
+
+OPENSSL_DIR=`echo $OPENSSL | awk -F '.tar' '{print $1}'`
+ZLIB_DIR=`echo $ZLIB | awk -F '.tar' '{print $1}'`
+PCRE_DIR=`echo $PCRE | awk -F '.tar' '{print $1}'`
+NGINX_DIR=`echo $NGINX | awk -F '.tar' '{print $1}'`
+NGINX_JVM_ROUTE_DIR=nginx_upstream_jvm_route
+NGINX_UPSTREAM_CHECK_DIR=`echo $NGINX_UPSTREAM_CHECK | awk -F '.tar' '{print $1}'`
+
+PREFIX=`cat etc/prefix.conf`
+pwd=`pwd`
+
+if [ -f etc/functions ];then
+	. etc/functions
+fi 
+
+
+Install_Pcre()
+{
+        ECHO "Install Pcre"
+	tar -xzmf src/$PCRE -C temp
+	cd temp/$PCRE_DIR
+	./configure  > /dev/null 2>&1 || EXIT 
+	make > /dev/null 2>&1 || EXIT 
+	make install > /dev/null 2>&1 || EXIT
+	cd $pwd 
+	OHCE "Done"
+}
+
+Install_Nginx()
+{
+        ECHO "Install Nginx"
+	tar -xzmf src/$OPENSSL -C temp
+	tar -xzmf src/$ZLIB -C temp
+	tar -xzmf src/$NGINX -C temp
+	tar -xzmf src/$NGINX_JVM_ROUTE -C temp	
+	tar -xzmf src/$NGINX_UPSTREAM_CHECK -C temp
+	cd temp/$NGINX_DIR 
+	patch -Np0 -i ../$NGINX_JVM_ROUTE_DIR/jvm_route.patch >/dev/null 2>&1
+	patch -Np1 -i ../$NGINX_UPSTREAM_CHECK_DIR/check.patch >/dev/null 2>&1
+
+	./configure --prefix=$PREFIX \
+            --with-http_stub_status_module \
+            --with-http_ssl_module \
+            --add-module=../$NGINX_JVM_ROUTE_DIR \
+	    --add-module=../$NGINX_UPSTREAM_CHECK_DIR \
+            --with-openssl=../$OPENSSL_DIR \
+            --with-zlib=../$ZLIB_DIR > /dev/null 2>&1 || EXIT
+
+	make > /dev/null 2>&1 || EXIT 
+	make install >/dev/null 2>&1 || EXIT 
+	cd $pwd 
+
+	install conf/nginx.conf $PREFIX/conf 
+	install bin/nginx      /etc/init.d
+
+	if [ ! -h /etc/nginx.conf ];then
+		ln -s $PREFIX/conf/nginx.conf  /etc
+	fi
+
+	if [ ! -h /usr/sbin/rcnginx ];then
+		ln -s /etc/init.d/nginx /usr/sbin/rcnginx
+	fi
+
+	if [ ! -d /var/log/nginx ];then
+		mkdir /var/log/nginx
+	fi
+
+	chkconfig --add nginx > /dev/null 2>&1
+	OHCE "Done"
+}
+
+
+
+#Do some clean job
+Clean_Clean()
+{
+	rm -r temp/$OPENSSL_DIR
+	rm -r temp/$ZLIB_DIR
+	rm -r temp/$PCRE_DIR
+	rm -r temp/$NGINX_DIR
+	rm -r temp/$NGINX_JVM_ROUTE_DIR
+	rm -r temp/$NGINX_UPSTREAM_CHECK_DIR
+}
+
+print_line
+print_green "Start Install Nginx"
+print_line
+Install_Pcre
+Install_Nginx
+Clean_Clean
+print_line
+print_green "Nginx Installed Succeed"
+print_line
